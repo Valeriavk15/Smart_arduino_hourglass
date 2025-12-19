@@ -3,7 +3,7 @@
 #include "LedControl.h"
 #include "Delay.h"
 
-//  Constantes hardware 
+// --- Constantes hardware ---
 #define  MATRIX_A  0
 #define  MATRIX_B  1
 
@@ -44,7 +44,7 @@ const int NUM_PARTICLES = 64;
 // Orientación estable
 const unsigned long ORIENTATION_STABLE_MS = 500UL;
 
-//  Estado 
+// --- Estado ---
 enum State {
   STATE_IDLE,
   STATE_RUNNING,
@@ -54,7 +54,7 @@ enum State {
 
 State state = STATE_IDLE;
 
-//  Tiempo configurado / restante 
+// --- Tiempo configurado / restante ---
 int setMinutes = 0;
 int setSeconds = 0;
 
@@ -63,36 +63,38 @@ long          remainingSeconds  = 0;
 
 unsigned long lastUserActionMs = 0;
 
-// Modo configuración (min/seg) 
+// --- Modo configuración (min/seg) ---
 bool modeMinutes = false; // false=segundos, true=minutos
 
-//  Gravedad 
+// --- Gravedad ---
 int gravity = 0;
 int lastRawGravity = 0;
 unsigned long gravityChangeMillis = 0;
 
-//  Control matrices y delays 
+// --- Control matrices y delays ---
 LedControl lc(PIN_DATAIN, PIN_CLK, PIN_LOAD, 2);
 NonBlockDelay d; // ahora sólo se usa como pequeño limitador puntual
 
-// Display TM1637 
+// --- Display TM1637 ---
 TM1637Display tm(10, 11);
 
-//  Botones (polling con tiempo) 
+// --- Botones (polling con tiempo) ---
 bool b1Down = false;
 unsigned long b1DownMs = 0;
 
 bool b2Down = false;
 unsigned long b2DownMs = 0;
 
-//  Sincronización exacta display + arena 
+// --- Sincronización exacta display + arena ---
 unsigned long runStartMs   = 0;    // momento en que arranca la cuenta
 unsigned long pauseAccumMs = 0;    // tiempo acumulado en pausas
 unsigned long pauseStartMs = 0;    // inicio de la pausa
 unsigned long totalRunMs   = 0;    // configuredSeconds * 1000
 int           droppedCount = 0;    // granos que ya han caído (0..64)
 
+// -----------------------------------------------------------------------------
 // AUX: Display
+// -----------------------------------------------------------------------------
 void displayTimeMMSS(int minutes, int seconds) {
   minutes = constrain(minutes, 0, 59);
   seconds = constrain(seconds, 0, 59);
@@ -100,8 +102,9 @@ void displayTimeMMSS(int minutes, int seconds) {
   tm.showNumberDecEx(value, 0b01000000, true); // enciende ':'
 }
 
+// -----------------------------------------------------------------------------
 // AUX: Partículas (movimiento interno)
-
+// -----------------------------------------------------------------------------
 coord getDown(int x, int y) { coord xy; xy.x = x - 1; xy.y = y + 1; return xy; }
 coord getLeft(int x, int y) { coord xy; xy.x = x - 1; xy.y = y;     return xy; }
 coord getRight(int x, int y){ coord xy; xy.x = x;     xy.y = y + 1; return xy; }
@@ -189,7 +192,9 @@ void fill(int addr, int maxcount) {
   }
 }
 
+// -----------------------------------------------------------------------------
 // Gravedad / orientación
+// -----------------------------------------------------------------------------
 int getGravityRaw() {
   int x = analogRead(PIN_X);
   int y = analogRead(PIN_Y);
@@ -209,7 +214,9 @@ int getTopMatrix() {
   return (gravity == 90) ? MATRIX_A : MATRIX_B;
 }
 
+// -----------------------------------------------------------------------------
 // Tiempo transcurrido real de la cuenta (sin pausas)
+// -----------------------------------------------------------------------------
 unsigned long elapsedRunMs() {
   if (runStartMs == 0) return 0;
   unsigned long now = millis();
@@ -219,8 +226,10 @@ unsigned long elapsedRunMs() {
   return base;
 }
 
+// -----------------------------------------------------------------------------
 // Drop de 1 grano: mueve un LED de arriba a abajo
-//  la matriz de abajo se rellena con el MISMO patrón de fill()
+//   → la matriz de abajo se rellena con el MISMO patrón de fill()
+// -----------------------------------------------------------------------------
 bool dropOneGrainStep() {
   int top    = getTopMatrix();
   int bottom = (top == MATRIX_A) ? MATRIX_B : MATRIX_A;
@@ -266,7 +275,9 @@ bool dropOneGrainStep() {
   return false;
 }
 
+// -----------------------------------------------------------------------------
 // Reset total
+// -----------------------------------------------------------------------------
 void resetTotalToZero() {
   setMinutes = 0;
   setSeconds = 0;
@@ -290,7 +301,9 @@ void resetTotalToZero() {
   noTone(PIN_BUZZER);
 }
 
+// -----------------------------------------------------------------------------
 // Preparar / iniciar cuenta (auto-start)
+// -----------------------------------------------------------------------------
 void startRunFromConfigured() {
   configuredSeconds = (unsigned long)setMinutes * 60UL + (unsigned long)setSeconds;
   configuredSeconds = constrain(configuredSeconds, 0UL, 3599UL);
@@ -316,7 +329,9 @@ void startRunFromConfigured() {
   state = STATE_RUNNING;
 }
 
+// -----------------------------------------------------------------------------
 // Actualización sincronizada: display + caída de arena
+// -----------------------------------------------------------------------------
 void updateRunSynced() {
   if (state != STATE_RUNNING) return;
   if (totalRunMs == 0) return;
@@ -340,7 +355,9 @@ void updateRunSynced() {
   int expectedDropped = (int)((e * (unsigned long)NUM_PARTICLES) / totalRunMs);
   if (expectedDropped > NUM_PARTICLES) expectedDropped = NUM_PARTICLES;
 
-  // el bucle se ejecuta
+  // 🔹 NUEVA VERSIÓN:
+  // Sin d.Timeout/d.Delay dentro: dejamos que caigan tantos granos
+  // como "pida" el tiempo. Para tiempos largos, el bucle se ejecuta
   // muchas veces pero expectedDropped sólo aumenta de uno en uno,
   // así que visualmente sigue siendo 1 grano cada cierto tiempo.
   while (droppedCount < expectedDropped) {
@@ -355,8 +372,9 @@ void updateRunSynced() {
   }
 }
 
-// 
+// -----------------------------------------------------------------------------
 // Auto-start tras 5s sin pulsar botones (solo en IDLE)
+// -----------------------------------------------------------------------------
 void handleAutoStart() {
   if (state != STATE_IDLE) return;
   if (setMinutes == 0 && setSeconds == 0) return;
@@ -366,10 +384,12 @@ void handleAutoStart() {
   }
 }
 
+// -----------------------------------------------------------------------------
 // Botones
 //   PIN3 long  -> cambia modo (min/seg)
 //   PIN7 short -> +1 en el modo activo (sólo en IDLE)
 //   PIN7 long  -> reset total
+// -----------------------------------------------------------------------------
 void handleButtons() {
   unsigned long now = millis();
 
@@ -410,7 +430,9 @@ void handleButtons() {
   }
 }
 
+// -----------------------------------------------------------------------------
 // Orientación: RESET en cualquier giro 180°, PAUSE a 90/270
+// -----------------------------------------------------------------------------
 void handleOrientation() {
   unsigned long now = millis();
   int raw = getGravityRaw();
@@ -450,7 +472,9 @@ void handleOrientation() {
   }
 }
 
+// -----------------------------------------------------------------------------
 // Setup / Loop
+// -----------------------------------------------------------------------------
 void setup() {
   pinMode(PIN_BUTTON,  INPUT_PULLUP);
   pinMode(PIN_BUTTON2, INPUT_PULLUP);
@@ -474,7 +498,7 @@ void setup() {
 }
 
 void loop() {
-  //Delay dinámico: para tiempos largos se queda en 100 ms,
+  // 🔹 Delay dinámico: para tiempos largos se queda en 100 ms,
   // para tiempos cortos se reduce para poder tirar 64 granos
   // sin tener que "amontonarlos" en el mismo frame.
   unsigned long frameDelay = DELAY_FRAME;
